@@ -72,6 +72,8 @@ func handleCommand(cmd uint32) {
 		setStartupEnabled(!startWithWindows)
 	case cmdCopyDiagnostics:
 		copyDiagnostics()
+	case cmdOpenPreferences:
+		openPreferencesDirectory()
 	case cmdExit:
 		pDestroyWindow := user32.NewProc("DestroyWindow")
 		pDestroyWindow.Call(hwnd)
