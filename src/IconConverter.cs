@@ -57,19 +57,31 @@ internal static class IconConverter
 
             byte[] image = new byte[size];
             Buffer.BlockCopy(ico, offset, image, 0, size);
-            Bitmap bitmap = DecodeFrame(image, width, height);
-            try
+
+            Frame frame = new Frame();
+            frame.Width = width;
+            frame.Height = height;
+
+            bool png = image.Length >= 8 &&
+                       image[0] == 0x89 && image[1] == 0x50 && image[2] == 0x4E && image[3] == 0x47 &&
+                       image[4] == 0x0D && image[5] == 0x0A && image[6] == 0x1A && image[7] == 0x0A;
+            if (png)
             {
-                Frame frame = new Frame();
-                frame.Width = bitmap.Width;
-                frame.Height = bitmap.Height;
-                frame.Dib = Make32BitDib(bitmap);
-                frames.Add(frame);
+                using (Bitmap bitmap = DecodePngFrame(image, width, height))
+                    frame.Dib = Make32BitDib(bitmap);
             }
-            finally
+            else
             {
-                bitmap.Dispose();
+                // The project artwork already uses ordinary 32-bit ICO DIB frames.
+                // Its legacy directory entries report planes=0, which Explorer accepts
+                // but the .NET Framework C# compiler rejects. Keep the pixels exactly
+                // as-is and let WriteFrameworkIcon emit standards-compliant directory
+                // metadata (planes=1, bpp=32).
+                if (image.Length < 40 || ReadU32(image, 0) < 40 || ReadU16(image, 12) != 1 || ReadU16(image, 14) != 32)
+                    throw new InvalidDataException("Unsupported ICO DIB frame.");
+                frame.Dib = image;
             }
+            frames.Add(frame);
         }
 
         if (frames.Count == 0)
@@ -77,22 +89,14 @@ internal static class IconConverter
         return frames;
     }
 
-    private static Bitmap DecodeFrame(byte[] image, int width, int height)
+    private static Bitmap DecodePngFrame(byte[] image, int width, int height)
     {
-        bool png = image.Length >= 8 &&
-                   image[0] == 0x89 && image[1] == 0x50 && image[2] == 0x4E && image[3] == 0x47 &&
-                   image[4] == 0x0D && image[5] == 0x0A && image[6] == 0x1A && image[7] == 0x0A;
-        if (!png)
-            throw new InvalidDataException("Only PNG-compressed source icon frames are expected by this converter.");
-
         using (MemoryStream stream = new MemoryStream(image, false))
         using (Image decoded = Image.FromStream(stream, true, true))
         {
             Bitmap output = new Bitmap(width, height, PixelFormat.Format32bppArgb);
             using (Graphics graphics = Graphics.FromImage(output))
-            {
                 graphics.DrawImage(decoded, new Rectangle(0, 0, width, height));
-            }
             return output;
         }
     }
@@ -108,30 +112,24 @@ internal static class IconConverter
         using (MemoryStream stream = new MemoryStream(40 + xorBytes + maskBytes))
         using (BinaryWriter writer = new BinaryWriter(stream))
         {
-            writer.Write(40);              // BITMAPINFOHEADER size
+            writer.Write(40);
             writer.Write(width);
-            writer.Write(height * 2);      // XOR bitmap + AND mask
-            writer.Write((ushort)1);       // planes
-            writer.Write((ushort)32);      // bits per pixel
-            writer.Write(0);               // BI_RGB
+            writer.Write(height * 2);
+            writer.Write((ushort)1);
+            writer.Write((ushort)32);
+            writer.Write(0);
             writer.Write(xorBytes);
             writer.Write(0); writer.Write(0);
             writer.Write(0); writer.Write(0);
 
-            // ICO DIB pixels are stored bottom-up as BGRA.
             for (int y = height - 1; y >= 0; y--)
             {
                 for (int x = 0; x < width; x++)
                 {
                     Color c = bitmap.GetPixel(x, y);
-                    writer.Write(c.B);
-                    writer.Write(c.G);
-                    writer.Write(c.R);
-                    writer.Write(c.A);
+                    writer.Write(c.B); writer.Write(c.G); writer.Write(c.R); writer.Write(c.A);
                 }
             }
-
-            // A zero AND mask lets the 32-bit alpha channel control transparency.
             writer.Write(new byte[maskBytes]);
             writer.Flush();
             return stream.ToArray();
