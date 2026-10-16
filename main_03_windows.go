@@ -11,44 +11,28 @@ import (
 )
 
 func getWindowTitle(h uintptr) string {
-	if h == 0 {
-		return ""
-	}
+	if h == 0 { return "" }
 	n, _, _ := pGetWindowTextLengthW.Call(h)
-	if n == 0 {
-		return ""
-	}
+	if n == 0 { return "" }
 	buf := make([]uint16, n+1)
 	r, _, _ := pGetWindowTextW.Call(h, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
-	if r == 0 {
-		return ""
-	}
+	if r == 0 { return "" }
 	return syscall.UTF16ToString(buf[:r])
 }
 
 func getProcessName(h uintptr) string {
-	if h == 0 {
-		return ""
-	}
+	if h == 0 { return "" }
 	var pid uint32
 	pGetWindowThreadProcessId.Call(h, uintptr(unsafe.Pointer(&pid)))
-	if pid == 0 {
-		return ""
-	}
+	if pid == 0 { return "" }
 	ph, _, _ := pOpenProcess.Call(processQueryLimitedInformation, 0, uintptr(pid))
-	if ph == 0 {
-		return ""
-	}
+	if ph == 0 { return "" }
 	defer pCloseHandle.Call(ph)
-
 	buf := make([]uint16, 32768)
 	size := uint32(len(buf))
 	r, _, _ := pQueryFullProcessImageNameW.Call(ph, 0, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
-	if r == 0 {
-		return ""
-	}
-	full := syscall.UTF16ToString(buf[:size])
-	return filepath.Base(full)
+	if r == 0 { return "" }
+	return filepath.Base(syscall.UTF16ToString(buf[:size]))
 }
 
 func isTaskbarClass(cls string) bool {
@@ -75,12 +59,8 @@ func isShellUIProcess(proc string) bool {
 }
 
 func isExplorerShellSurface(h uintptr, cls, title string) bool {
-	if strings.ToLower(getProcessName(h)) != "explorer.exe" {
-		return false
-	}
-	if isTaskbarClass(cls) || cls == "#32768" {
-		return true
-	}
+	if strings.ToLower(getProcessName(h)) != "explorer.exe" { return false }
+	if isTaskbarClass(cls) || cls == "#32768" { return true }
 	switch cls {
 	case "TopLevelWindowForOverflowXamlIsland", "XamlExplorerHostIslandWindow", "TaskListThumbnailWnd",
 		"NotifyIconOverflowWindow", "Shell_InputSwitchTopLevelWindow":
@@ -94,31 +74,20 @@ func isExplorerShellSurface(h uintptr, cls, title string) bool {
 }
 
 func isShellUIWindow(h uintptr) bool {
-	if h == 0 {
-		return false
-	}
+	if h == 0 { return false }
 	cls := getWindowClass(h)
 	title := getWindowTitle(h)
 	proc := strings.ToLower(getProcessName(h))
-	if isTaskbarClass(cls) || isShellUIProcess(proc) || isExplorerShellSurface(h, cls, title) {
-		return true
-	}
-	if (proc == "explorer.exe" || proc == "shellhost.exe" || proc == "shellexperiencehost.exe" ||
+	if isTaskbarClass(cls) || isShellUIProcess(proc) || isExplorerShellSurface(h, cls, title) { return true }
+	return (proc == "explorer.exe" || proc == "shellhost.exe" || proc == "shellexperiencehost.exe" ||
 		proc == "startmenuexperiencehost.exe" || proc == "searchhost.exe") &&
-		(strings.Contains(cls, "Xaml") || isKnownShellClass(cls)) {
-		return true
-	}
-	return false
+		(strings.Contains(cls, "Xaml") || isKnownShellClass(cls))
 }
 
 func isShellUIForeground() bool {
 	fg, _, _ := pGetForegroundWindow.Call()
-	if fg == 0 {
-		return false
-	}
-	if isShellUIWindow(fg) {
-		return true
-	}
+	if fg == 0 { return false }
+	if isShellUIWindow(fg) { return true }
 	root, _, _ := pGetAncestor.Call(fg, gaRootOwner)
 	return root != 0 && root != fg && isShellUIWindow(root)
 }
@@ -128,21 +97,14 @@ func isVisibleTopLevelClass(className string) bool {
 	var after uintptr
 	for {
 		h, _, _ := pFindWindowExW.Call(0, after, classPtr, 0)
-		if h == 0 {
-			return false
-		}
+		if h == 0 { return false }
 		visible, _, _ := pIsWindowVisible.Call(h)
-		if visible != 0 {
-			return true
-		}
+		if visible != 0 { return true }
 		after = h
 	}
 }
 
 func isTrayOverflowOpen() bool {
-	// Windows 11 has used all three of these for the notification-area overflow
-	// across different releases. There can also be more than one XAML host of a
-	// class, so isVisibleTopLevelClass iterates them instead of trusting the first.
 	return isVisibleTopLevelClass("TopLevelWindowForOverflowXamlIsland") ||
 		isVisibleTopLevelClass("XamlExplorerHostIslandWindow") ||
 		isVisibleTopLevelClass("NotifyIconOverflowWindow")
@@ -155,26 +117,19 @@ func isShellUIActive() bool {
 func refreshTaskbars() {
 	taskbars = taskbars[:0]
 	primary, _, _ := pFindWindowW.Call(uintptr(unsafe.Pointer(utf16Ptr("Shell_TrayWnd"))), 0)
-	if primary != 0 {
-		taskbars = append(taskbars, primary)
-	}
+	if primary != 0 { taskbars = append(taskbars, primary) }
 	pEnumWindows.Call(enumWindowsCallback, 0)
 	sort.Slice(taskbars, func(i, j int) bool { return taskbars[i] < taskbars[j] })
 	out := taskbars[:0]
 	var prev uintptr
 	for i, h := range taskbars {
-		if i == 0 || h != prev {
-			out = append(out, h)
-			prev = h
-		}
+		if i == 0 || h != prev { out = append(out, h); prev = h }
 	}
 	taskbars = out
 }
 
 func enumWindowsProc(h, _ uintptr) uintptr {
-	if getWindowClass(h) == "Shell_SecondaryTrayWnd" {
-		taskbars = append(taskbars, h)
-	}
+	if getWindowClass(h) == "Shell_SecondaryTrayWnd" { taskbars = append(taskbars, h) }
 	return 1
 }
 
@@ -195,20 +150,33 @@ func ensureAutohideForEnabledState() {
 		originalAppbarCaptured = true
 	}
 	if enabled {
-		setAppbarState(originalAppbarState | absAutoHide)
+		// Slippery Taskbar must own visibility itself. Native Windows auto-hide
+		// reveals the taskbar whenever the mouse touches a screen edge, which is
+		// the opposite of the desired Win-key-only behavior.
+		setAppbarState(originalAppbarState &^ absAutoHide)
 	} else {
 		setAppbarState(originalAppbarState)
 	}
 }
 
 func restoreOriginalTaskbarState() {
-	if originalAppbarCaptured {
-		setAppbarState(originalAppbarState)
-	}
+	if originalAppbarCaptured { setAppbarState(originalAppbarState) }
 	refreshTaskbars()
+	for _, h := range taskbars { pShowWindowAsync.Call(h, swShowNoActivate) }
+}
+
+func isCursorOverVisibleTaskbar() bool {
+	if !lastShouldShow { return false }
+	var pt point
+	if ok, _, _ := pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt))); ok == 0 { return false }
 	for _, h := range taskbars {
-		pShowWindowAsync.Call(h, swShowNoActivate)
+		visible, _, _ := pIsWindowVisible.Call(h)
+		if visible == 0 { continue }
+		var r rect
+		if ok, _, _ := pGetWindowRect.Call(h, uintptr(unsafe.Pointer(&r))); ok == 0 { continue }
+		if pt.X >= r.Left && pt.X < r.Right && pt.Y >= r.Top && pt.Y < r.Bottom { return true }
 	}
+	return false
 }
 
 func isWindow(h uintptr) bool {
@@ -216,16 +184,5 @@ func isWindow(h uintptr) bool {
 	return r != 0
 }
 
-func abs32(v int32) int32 {
-	if v < 0 {
-		return -v
-	}
-	return v
-}
-
-func max32(a, b int32) int32 {
-	if a > b {
-		return a
-	}
-	return b
-}
+func abs32(v int32) int32 { if v < 0 { return -v }; return v }
+func max32(a, b int32) int32 { if a > b { return a }; return b }
