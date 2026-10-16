@@ -18,15 +18,14 @@ try {
 
     Remove-Item $syso -Force -ErrorAction SilentlyContinue
 
-    # Use a Go-native resource packer instead of Microsoft's rc.exe.
-    # This accepts modern ICO/PNG icon data directly and avoids RC2176
-    # ('old DIB') failures while still embedding the Explorer icon,
-    # GUI manifest, and version metadata in the final PE executable.
+    # Embed manifest and version metadata with a Go-native resource packer.
+    # The application/tray icon is embedded separately in icon_windows.go.
+    # Keeping icon decoding out of this step avoids Windows rc.exe RC2176 and
+    # malformed-ICO parser failures from breaking CI/release builds.
     & go run github.com/tc-hib/go-winres@v0.3.1 simply `
         --arch amd64 `
         --out rsrc `
         --manifest gui `
-        --icon 'assets\slippery-taskbar.ico' `
         --file-version $version4 `
         --product-version $version4 `
         --file-description 'Slippery Taskbar' `
