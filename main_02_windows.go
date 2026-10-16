@@ -37,6 +37,7 @@ var (
 	pGetWindowThreadProcessId      = user32.NewProc("GetWindowThreadProcessId")
 	pEnumWindows                   = user32.NewProc("EnumWindows")
 	pFindWindowW                   = user32.NewProc("FindWindowW")
+	pFindWindowExW                 = user32.NewProc("FindWindowExW")
 	pIsWindow                      = user32.NewProc("IsWindow")
 	pIsWindowVisible               = user32.NewProc("IsWindowVisible")
 	pShowWindowAsync               = user32.NewProc("ShowWindowAsync")
