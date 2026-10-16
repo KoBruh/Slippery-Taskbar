@@ -11,24 +11,17 @@ import (
 )
 
 func setStartupEnabled(v bool) {
-	const hkcu = uintptr(0x80000001)
-	if v {
-		regWriteString(hkcu, runKey, runValue, `"`+executablePath()+`"`)
-		regDeleteValue(hkcu, runKey, legacyRunValue)
-	} else {
-		regDeleteValue(hkcu, runKey, runValue)
-		regDeleteValue(hkcu, runKey, legacyRunValue)
-	}
 	startWithWindows = v
+	prefs.StartWithWindows = v
+	syncStartupRegistration()
+	savePreferences()
 }
 
 func addTrayIcon() {
 	tray = notifyIconData{CbSize: uint32(unsafe.Sizeof(notifyIconData{})), HWnd: hwnd, UID: 1,
 		UFlags: nifMessage | nifIcon | nifTip, UCallbackMessage: wmTray}
 	icon := loadEmbeddedIcon(20)
-	if icon == 0 {
-		icon, _, _ = pLoadIconW.Call(0, idiApplication)
-	}
+	if icon == 0 { icon, _, _ = pLoadIconW.Call(0, idiApplication) }
 	tray.HIcon = icon
 	fillUTF16(tray.SzTip[:], appName)
 	pShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&tray)))
@@ -48,9 +41,7 @@ func showBalloon(title, text string) {
 
 func appendMenu(menu uintptr, flags uint32, id uint32, text string) {
 	var p uintptr
-	if text != "" {
-		p = uintptr(unsafe.Pointer(utf16Ptr(text)))
-	}
+	if text != "" { p = uintptr(unsafe.Pointer(utf16Ptr(text))) }
 	pAppendMenuW.Call(menu, uintptr(flags), uintptr(id), p)
 }
 
@@ -58,15 +49,9 @@ func showTrayMenu() {
 	var pt point
 	pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	menu, _, _ := pCreatePopupMenu.Call()
-	if menu == 0 {
-		return
-	}
+	if menu == 0 { return }
 	defer pDestroyMenu.Call(menu)
 
-	// TrackPopupMenu runs a nested Windows message loop. If taskbar hiding is
-	// allowed to fire while that loop is active, Explorer can invalidate the
-	// notification-area flyout/menu underneath us. Protect the menu for its
-	// entire lifetime and give Explorer a short grace period after it closes.
 	trayMenuOpen = true
 	if !lastShouldShow {
 		applyTaskbarVisibility(true)
@@ -75,23 +60,18 @@ func showTrayMenu() {
 	defer func() {
 		trayMenuOpen = false
 		candidate := time.Now().Add(shellTransitionGrace)
-		if candidate.After(visibleUntil) {
-			visibleUntil = candidate
-		}
+		if candidate.After(visibleUntil) { visibleUntil = candidate }
 	}()
 
 	flags := uint32(mfString)
-	if enabled {
-		flags |= mfChecked
-	}
+	if enabled { flags |= mfChecked }
 	appendMenu(menu, flags, cmdToggle, "Enable taskbar hiding\tCtrl+Win+F11")
 	appendMenu(menu, mfString, cmdShowFiveSeconds, "Show taskbar for 5 seconds")
 	flags = mfString
-	if startWithWindows {
-		flags |= mfChecked
-	}
+	if startWithWindows { flags |= mfChecked }
 	appendMenu(menu, flags, cmdStartup, "Start with Windows")
 	appendMenu(menu, mfSeparator, 0, "")
+	appendMenu(menu, mfString, cmdOpenPreferences, "Open preferences folder")
 	appendMenu(menu, mfString, cmdCopyDiagnostics, "Copy diagnostics")
 	appendMenu(menu, mfSeparator, 0, "")
 	appendMenu(menu, mfString, cmdExit, "Exit")
@@ -103,29 +83,19 @@ func showTrayMenu() {
 
 func copyTextToClipboard(text string) bool {
 	r, _, _ := pOpenClipboard.Call(hwnd)
-	if r == 0 {
-		return false
-	}
+	if r == 0 { return false }
 	defer pCloseClipboard.Call()
 	pEmptyClipboard.Call()
 	data := syscall.StringToUTF16(text)
 	bytes := uintptr(len(data) * 2)
 	mem, _, _ := pGlobalAlloc.Call(gmemMoveable, bytes)
-	if mem == 0 {
-		return false
-	}
+	if mem == 0 { return false }
 	ptr, _, _ := pGlobalLock.Call(mem)
-	if ptr == 0 {
-		pGlobalFree.Call(mem)
-		return false
-	}
+	if ptr == 0 { pGlobalFree.Call(mem); return false }
 	pRtlMoveMemory.Call(ptr, uintptr(unsafe.Pointer(&data[0])), bytes)
 	pGlobalUnlock.Call(mem)
 	set, _, _ := pSetClipboardData.Call(cfUnicodeText, mem)
-	if set == 0 {
-		pGlobalFree.Call(mem)
-		return false
-	}
+	if set == 0 { pGlobalFree.Call(mem); return false }
 	return true
 }
 
@@ -140,51 +110,41 @@ func copyDiagnostics() {
 	fg, _, _ := pGetForegroundWindow.Call()
 	root, _, _ := pGetAncestor.Call(fg, gaRootOwner)
 	refreshTaskbars()
+	appbarState := getAppbarState()
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Slippery Taskbar diagnostics\r\n")
 	fmt.Fprintf(&b, "Windows: %s %s build %s.%d\r\n", product, display, build, ubr)
-	fmt.Fprintf(&b, "Enabled: %t\r\nWin key down: %t\r\nShell UI foreground: %t\r\nTray overflow open: %t\r\nTaskbars found: %d\r\n", enabled, winDown, isShellUIForeground(), isTrayOverflowOpen(), len(taskbars))
+	fmt.Fprintf(&b, "Preferences: %s\r\n", preferencesFilePath())
+	fmt.Fprintf(&b, "Enabled: %t\r\nStart with Windows: %t\r\nKeep visible while interacting: %t\r\n", enabled, startWithWindows, prefs.KeepVisibleWhileInteracting)
+	fmt.Fprintf(&b, "Native auto-hide active: %t\r\n", appbarState&absAutoHide != 0)
+	fmt.Fprintf(&b, "Win key down: %t\r\nShell UI foreground: %t\r\nTray overflow open: %t\r\nTaskbars found: %d\r\n", winDown, isShellUIForeground(), isTrayOverflowOpen(), len(taskbars))
 	appendWindowDiag := func(label string, h uintptr) {
 		fmt.Fprintf(&b, "%s: hwnd=0x%x", label, h)
-		if h != 0 {
-			fmt.Fprintf(&b, ", process=%s, class=%q, title=%q", getProcessName(h), getWindowClass(h), getWindowTitle(h))
-		}
+		if h != 0 { fmt.Fprintf(&b, ", process=%s, class=%q, title=%q", getProcessName(h), getWindowClass(h), getWindowTitle(h)) }
 		b.WriteString("\r\n")
 	}
 	appendWindowDiag("Foreground", fg)
-	if root != fg {
-		appendWindowDiag("Root owner", root)
-	}
-	for i, h := range taskbars {
-		appendWindowDiag(fmt.Sprintf("Taskbar %d", i), h)
-	}
+	if root != fg { appendWindowDiag("Root owner", root) }
+	for i, h := range taskbars { appendWindowDiag(fmt.Sprintf("Taskbar %d", i), h) }
 
-	if copyTextToClipboard(b.String()) {
-		showBalloon(appName, "Diagnostics copied to the clipboard.")
-	}
+	if copyTextToClipboard(b.String()) { showBalloon(appName, "Diagnostics copied to the clipboard.") }
 }
 
 func onWinKeyState(down bool) {
-	if down == winDown {
-		return
-	}
+	if down == winDown { return }
 	winDown = down
 	now := time.Now()
 	if down {
 		candidate := now.Add(winPressGrace)
-		if candidate.After(visibleUntil) {
-			visibleUntil = candidate
-		}
+		if candidate.After(visibleUntil) { visibleUntil = candidate }
 		if !lastShouldShow {
 			applyTaskbarVisibility(true)
 			lastShouldShow = true
 		}
 	} else {
 		candidate := now.Add(winReleaseGrace)
-		if candidate.After(visibleUntil) {
-			visibleUntil = candidate
-		}
+		if candidate.After(visibleUntil) { visibleUntil = candidate }
 	}
 }
 
