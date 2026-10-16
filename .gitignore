@@ -1,5 +1,7 @@
-SlipperyTaskbar.exe
+src/bin/
+src/obj/
+src/publish/
+src/SlipperyTaskbar.exe
+bootstrap/*.exe
+*.pdb
 SHA256SUMS.txt
-*.res
-*.syso
-*.zip

@@ -1,4 +1,4 @@
-name: Build and release Windows executable
+name: Build Windows release
 
 on:
   push:
@@ -23,12 +23,29 @@ jobs:
         with:
           go-version: '1.23.x'
 
-      - name: Vet
-        run: go vet ./...
+      - name: Compile C# app
+        shell: cmd
+        run: src\build-framework.cmd
 
-      - name: Build Windows x64 executable
+      - name: Build setup and checksums
         shell: pwsh
-        run: ./build.ps1
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "VERSION must be X.Y.Z" }
+
+          Push-Location bootstrap
+          go vet ./...
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o SlipperyTaskbar-Setup.raw.exe .
+          python .\add_setup_icon.py .\SlipperyTaskbar-Setup.raw.exe .\payload\slippery-taskbar.ico "..\SlipperyTaskbar-Setup-v$version.exe"
+          Pop-Location
+
+          Copy-Item .\src\SlipperyTaskbar.exe .\SlipperyTaskbar.exe
+          $files = @('SlipperyTaskbar.exe', "SlipperyTaskbar-Setup-v$version.exe")
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $file"
+          }
+          Set-Content -Path SHA256SUMS.txt -Value $lines -Encoding ascii
 
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
@@ -36,31 +53,29 @@ jobs:
           name: Slippery-Taskbar-x64
           path: |
             SlipperyTaskbar.exe
+            SlipperyTaskbar-Setup-v*.exe
             SHA256SUMS.txt
           if-no-files-found: error
 
-      - name: Publish GitHub Release for VERSION
+      - name: Publish release
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = (Get-Content VERSION -Raw).Trim()
-          if ($version -notmatch '^\d+\.\d+\.\d+$') {
-            throw "VERSION must be in X.Y.Z format, got '$version'"
-          }
-
           $tag = "v$version"
           gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag already exists; leaving the published release unchanged."
+            Write-Host "Release $tag already exists; leaving it unchanged."
             exit 0
           }
 
           gh release create $tag `
             SlipperyTaskbar.exe `
+            "SlipperyTaskbar-Setup-v$version.exe" `
             SHA256SUMS.txt `
             --repo "${{ github.repository }}" `
             --target "${{ github.sha }}" `
             --title "Slippery Taskbar $tag" `
-            --generate-notes
+            --notes "First stable C#/.NET release. Includes the setup executable, a direct executable, and full source in the repository."
