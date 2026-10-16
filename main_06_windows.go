@@ -108,9 +108,19 @@ func windowProc(h uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		}
 		return 1
 	case wmTray:
-		if lParam == wmRButtonUp || lParam == wmContextMenu || lParam == wmLButtonDblClk { showTrayMenu() }
+		// NOTIFYICON_VERSION_4 puts the notification code in LOWORD(lParam).
+		// Use only WM_CONTEXTMENU in v4 mode so a single right-click cannot
+		// open multiple nested menus. Keep WM_RBUTTONUP only as a legacy fallback.
+		event := uint32(lParam & 0xffff)
+		if trayVersion4 {
+			if event == wmContextMenu { showTrayMenu() }
+		} else if event == wmRButtonUp || event == wmContextMenu {
+			showTrayMenu()
+		}
 		return 0
 	case wmCommand:
+		// Kept for compatibility with any future window/menu commands. The tray
+		// popup itself now uses TPM_RETURNCMD and executes only after dismissal.
 		handleCommand(uint32(wParam & 0xffff))
 		return 0
 	case wmQueryEndSession:
