@@ -34,7 +34,7 @@ jobs:
           $version = (Get-Content VERSION -Raw).Trim()
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "VERSION must be X.Y.Z" }
 
-          Copy-Item .\src\slippery-taskbar.generated.ico .\bootstrap\payload\slippery-taskbar.ico -Force
+          Copy-Item .\assets\slippery-taskbar.ico .\bootstrap\payload\slippery-taskbar.ico -Force
 
           Push-Location bootstrap
           go vet ./...
@@ -81,4 +81,4 @@ jobs:
             --repo "${{ github.repository }}" `
             --target "${{ github.sha }}" `
             --title "Slippery Taskbar $tag" `
-            --notes "First stable C#/.NET release. Includes the setup executable, a direct executable, and full source in the repository."
+            --notes "Stable C#/.NET release. Source and build scripts are included in the repository."
