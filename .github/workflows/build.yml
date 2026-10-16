@@ -24,11 +24,11 @@ jobs:
           go-version: '1.23.x'
           cache: false
 
-      - name: Compile C# app
+      - name: Compile C# source
         shell: cmd
         run: src\build-framework.cmd
 
-      - name: Build setup and checksums
+      - name: Build setup and checksum
         shell: pwsh
         run: |
           $version = (Get-Content VERSION -Raw).Trim()
@@ -42,20 +42,15 @@ jobs:
           python .\add_setup_icon.py .\SlipperyTaskbar-Setup.raw.exe .\payload\slippery-taskbar.ico "..\SlipperyTaskbar-Setup-v$version.exe"
           Pop-Location
 
-          Copy-Item .\src\SlipperyTaskbar.exe .\SlipperyTaskbar.exe
-          $files = @('SlipperyTaskbar.exe', "SlipperyTaskbar-Setup-v$version.exe")
-          $lines = foreach ($file in $files) {
-            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$hash  $file"
-          }
-          Set-Content -Path SHA256SUMS.txt -Value $lines -Encoding ascii
+          $file = "SlipperyTaskbar-Setup-v$version.exe"
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path SHA256SUMS.txt -Value "$hash  $file" -Encoding ascii
 
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: Slippery-Taskbar-x64
           path: |
-            SlipperyTaskbar.exe
             SlipperyTaskbar-Setup-v*.exe
             SHA256SUMS.txt
           if-no-files-found: error
@@ -75,7 +70,6 @@ jobs:
           }
 
           gh release create $tag `
-            SlipperyTaskbar.exe `
             "SlipperyTaskbar-Setup-v$version.exe" `
             SHA256SUMS.txt `
             --repo "${{ github.repository }}" `
