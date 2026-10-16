@@ -55,9 +55,16 @@ func savePreferences() {
 	data, err := json.MarshalIndent(prefs, "", "  ")
 	if err != nil { return }
 	data = append(data, '\n')
-	tmp := preferencesFilePath() + ".tmp"
+	path := preferencesFilePath()
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil { return }
-	_ = os.Rename(tmp, preferencesFilePath())
+	// Windows does not reliably replace an existing destination with Rename.
+	// Remove the old small config first, then promote the fully-written temp file.
+	_ = os.Remove(path)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.WriteFile(path, data, 0o644)
+		_ = os.Remove(tmp)
+	}
 }
 
 func migratePreferencesFromRegistry() {
