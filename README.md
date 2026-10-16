@@ -1,16 +1,7 @@
 # Slippery Taskbar
 
-A lightweight C#/.NET app for Windows 11 that hides the taskbar until you intentionally reveal it with the Windows key or shell UI.
+Hides the Windows 11 taskbar until you intentionally reveal it.
 
-## Download
+Download the latest build from **Releases**.
 
-Grab the latest `SlipperyTaskbar-Setup` from **Releases**.
-
-Features: no bottom-edge reveal, Win-key reveal, tray controls, multi-monitor support, startup option, and full-height maximized windows.
-
-## Build from source
-
-- Windows built-in .NET Framework compiler: run `src\build-framework.cmd`
-- .NET 8 SDK: run `src\publish-net8.ps1`
-
-Source is in `src/`. Preferences are stored in `%LOCALAPPDATA%\Slippery-Taskbar\config.json`.
+Build from source with `src\build-framework.cmd` or `src\publish-net8.ps1`.
