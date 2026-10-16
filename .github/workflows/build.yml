@@ -1,14 +1,13 @@
-name: Build Windows executable
+name: Build and release Windows executable
 
 on:
   push:
     branches: [ main, master ]
-    tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-x64:
@@ -23,14 +22,42 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Build icon-embedded Windows x64 executable
+      - name: Build Windows x64 executable
         shell: pwsh
         run: ./build.ps1
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Actions artifact
+        uses: actions/upload-artifact@v4
         with:
           name: Slippery-Taskbar-x64
           path: |
             SlipperyTaskbar.exe
             SHA256SUMS.txt
           if-no-files-found: error
+
+      - name: Publish GitHub Release for VERSION
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "VERSION must be in X.Y.Z format, got '$version'"
+          }
+
+          $tag = "v$version"
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; uploading/replacing assets."
+            gh release upload $tag SlipperyTaskbar.exe SHA256SUMS.txt --clobber --repo "${{ github.repository }}"
+            exit $LASTEXITCODE
+          }
+
+          gh release create $tag `
+            SlipperyTaskbar.exe `
+            SHA256SUMS.txt `
+            --repo "${{ github.repository }}" `
+            --target "${{ github.sha }}" `
+            --title "Slippery Taskbar $tag" `
+            --generate-notes
