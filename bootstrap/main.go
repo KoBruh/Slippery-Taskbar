@@ -127,7 +127,6 @@ func main() {
 			"/optimize+",
 			"/platform:x64",
 			"/out:" + nextExe,
-			"/win32icon:" + iconPath,
 			"/reference:System.dll",
 			"/reference:System.Core.dll",
 			"/reference:System.Drawing.dll",
