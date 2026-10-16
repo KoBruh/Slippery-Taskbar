@@ -10,6 +10,7 @@ internal static class IconConverter
     {
         public int Width;
         public int Height;
+        public ushort BitCount;
         public byte[] Dib;
     }
 
@@ -50,6 +51,7 @@ internal static class IconConverter
             int entry = 6 + i * 16;
             int width = ico[entry] == 0 ? 256 : ico[entry];
             int height = ico[entry + 1] == 0 ? 256 : ico[entry + 1];
+            ushort directoryBpp = ReadU16(ico, entry + 6);
             int size = checked((int)ReadU32(ico, entry + 8));
             int offset = checked((int)ReadU32(ico, entry + 12));
             if (size <= 0 || offset < 0 || offset + size > ico.Length)
@@ -69,16 +71,24 @@ internal static class IconConverter
             {
                 using (Bitmap bitmap = DecodePngFrame(image, width, height))
                     frame.Dib = Make32BitDib(bitmap);
+                frame.BitCount = 32;
             }
             else
             {
-                // The project artwork already uses ordinary 32-bit ICO DIB frames.
-                // Its legacy directory entries report planes=0, which Explorer accepts
-                // but the .NET Framework C# compiler rejects. Keep the pixels exactly
-                // as-is and let WriteFrameworkIcon emit standards-compliant directory
-                // metadata (planes=1, bpp=32).
-                if (image.Length < 40 || ReadU32(image, 0) < 40 || ReadU16(image, 12) != 1 || ReadU16(image, 14) != 32)
-                    throw new InvalidDataException("Unsupported ICO DIB frame.");
+                // Preserve legacy DIB image bytes exactly. The old artwork was valid
+                // enough for Explorer but some directory metadata was non-standard.
+                // Re-emitting a clean ICO directory (planes=1) is sufficient for csc.
+                if (image.Length < 12)
+                    throw new InvalidDataException("ICO DIB frame is truncated.");
+
+                uint headerSize = ReadU32(image, 0);
+                ushort dibBpp = 0;
+                if (headerSize == 12 && image.Length >= 12)
+                    dibBpp = ReadU16(image, 10);
+                else if (headerSize >= 40 && image.Length >= 16)
+                    dibBpp = ReadU16(image, 14);
+
+                frame.BitCount = directoryBpp != 0 ? directoryBpp : (dibBpp != 0 ? dibBpp : (ushort)32);
                 frame.Dib = image;
             }
             frames.Add(frame);
@@ -153,7 +163,7 @@ internal static class IconConverter
                 writer.Write((byte)0);
                 writer.Write((byte)0);
                 writer.Write((ushort)1);
-                writer.Write((ushort)32);
+                writer.Write(frame.BitCount);
                 writer.Write(frame.Dib.Length);
                 writer.Write(offset);
                 offset += frame.Dib.Length;
