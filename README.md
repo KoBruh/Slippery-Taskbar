@@ -1,7 +1,5 @@
 # Slippery Taskbar
 
-Hides the Windows 11 taskbar until you intentionally reveal it.
+Hide the Windows 11 taskbar until you press **Win**.
 
-Download the latest build from **Releases**.
-
-Build from source with `src\build-framework.cmd` or `src\publish-net8.ps1`.
+Download from **Releases**. Source is in `src/`.
