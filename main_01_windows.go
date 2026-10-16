@@ -102,7 +102,8 @@ const (
 	cmdShowFiveSeconds = 1002
 	cmdStartup         = 1003
 	cmdCopyDiagnostics = 1004
-	cmdExit            = 1005
+	cmdOpenPreferences = 1005
+	cmdExit            = 1006
 
 	pollTimerID = 1
 	pollMS      = 30
@@ -110,8 +111,6 @@ const (
 )
 
 const (
-	// Keep the taskbar visible just long enough for Explorer shell surfaces to
-	// finish opening/closing. Longer windows here make the taskbar feel sticky.
 	winPressGrace        = 700 * time.Millisecond
 	winReleaseGrace      = 500 * time.Millisecond
 	shellTransitionGrace = 500 * time.Millisecond
