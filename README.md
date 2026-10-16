@@ -6,67 +6,95 @@
 
 A lightweight Windows 11 taskbar hider inspired by [ButteryTaskbar2](https://github.com/LuisThiamNye/ButteryTaskbar2).
 
-This repository is the home of **Slippery Taskbar**, a new implementation focused on modern Windows 11 shell behaviour and smooth taskbar transitions.
+The goal is simple: keep the taskbar completely out of the way until you intentionally invoke Windows shell UI, especially with the **Windows key**.
 
-The goal is the same: keep the taskbar completely out of the way until you intentionally invoke Windows shell UI. This version is built around current Windows 11 shell behaviour instead of assuming the Start menu always uses one old window class.
+## v0.3 behavior
 
-## What this fixes
+Earlier builds used Windows' built-in taskbar auto-hide state. That turned out to be the wrong mechanism because Windows deliberately reveals an auto-hidden taskbar whenever the mouse touches the screen edge.
 
-The older app can hide the taskbar again immediately after you press the Windows key because newer Windows 11 builds moved Start, Search, Quick Settings, Notification Center and other shell surfaces between different XAML hosts/processes.
+Starting with v0.3, Slippery Taskbar owns visibility itself:
 
-This remake changes the state model:
+- Windows native auto-hide is temporarily disabled while Slippery Taskbar hiding is enabled.
+- Moving the mouse to the bottom edge **does not reveal a hidden taskbar**.
+- Pressing either Windows key immediately reveals it.
+- Once the taskbar has intentionally been shown, keeping the pointer over the taskbar keeps it visible long enough to interact with the notification area.
+- Opening **Show hidden icons** keeps the taskbar visible while the overflow flyout is open.
+- Start, Search, Task View, Quick Settings, Notification Center and other known Windows shell surfaces also keep it visible.
+- Slippery Taskbar's own tray menu is protected from the hide loop while the menu is open.
+- Your original Windows auto-hide setting is restored when Slippery Taskbar is disabled or exits normally.
 
-- The **Windows key itself is authoritative**: pressing either Win key immediately shows the taskbar.
-- Win-key input is detected with **Raw Input plus `GetAsyncKeyState` polling**, avoiding reliance on the old low-level keyboard-hook timing.
-- The taskbar stays visible while known shell UI is foreground, including Start, Search, Task View, Quick Settings, Notification Center, tray overflow and Win+X menus.
-- It recognizes both older Windows 11 hosts (`ShellExperienceHost.exe` / `Windows.UI.Core.CoreWindow`) and newer hosts such as `ShellHost.exe` / `ControlCenterWindow`.
-- Taskbar show/hide changes are **edge-triggered** instead of being forced every few milliseconds, so Explorer's own XAML animations are not constantly interrupted.
-- The **Show hidden icons** flyout is detected by its actual top-level window (`TopLevelWindowForOverflowXamlIsland`, with legacy `NotifyIconOverflowWindow` fallback), so it stays open even if focus moves elsewhere.
-- A short grace period covers transitions between the Windows key, Start and other shell windows without making the taskbar feel sticky.
+## Preferences
 
-## October 2026 smoothness update
+Slippery Taskbar now creates a normal per-user preferences folder:
 
-- Removed the 30 ms repeated taskbar show/reposition loop that could fight Explorer animations.
-- Added persistent detection for the Windows 11 hidden-icons overflow flyout.
-- Reduced Win-key transition hold time so closing Start feels more immediate.
-- Kept a slow hidden-state watchdog for Explorer/taskbar recreation without touching an already-visible taskbar.
+```text
+%LOCALAPPDATA%\Slippery-Taskbar\
+```
+
+Settings are stored in:
+
+```text
+%LOCALAPPDATA%\Slippery-Taskbar\config.json
+```
+
+A typical file looks like:
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "start_with_windows": false,
+  "keep_visible_while_interacting": true
+}
+```
+
+The tray menu has **Open preferences folder** so you do not need to find the directory manually. Preferences are loaded on application startup; restart Slippery Taskbar after manually editing `config.json`.
+
+Existing ButteryTaskbar11 / early Slippery Taskbar registry settings are migrated into the preferences file on first run.
 
 ## Features
 
+- Windows 11-focused taskbar hide/show behavior.
+- Windows key detected through Raw Input plus `GetAsyncKeyState` polling.
 - Primary and secondary taskbar support.
 - Multi-monitor support.
 - Recovery after `explorer.exe` / taskbar restarts.
-- Restores the tray icon after Explorer restarts.
+- Restores the notification icon after Explorer restarts.
+- Hidden-icons overflow detection for multiple Windows 11 shell implementations, including:
+  - `TopLevelWindowForOverflowXamlIsland`
+  - `XamlExplorerHostIslandWindow`
+  - `NotifyIconOverflowWindow`
 - `Ctrl + Win + F11` toggles hiding on/off.
 - Tray menu:
   - Enable taskbar hiding
   - Show taskbar for 5 seconds
   - Start with Windows
+  - Open preferences folder
   - Copy diagnostics
   - Exit
-- Restores your original Windows taskbar auto-hide state on a normal exit.
-- No .NET runtime and no third-party libraries.
+- Explorer `.exe` icon and tray icon use the Slippery Taskbar artwork.
+- No .NET runtime.
 - Single executable.
 
 ## Run it
 
-Use `SlipperyTaskbar.exe` from the release/package root.
+Download `SlipperyTaskbar.exe` from the latest GitHub Release.
 
 1. Run the executable.
-2. The taskbar stays visible briefly, then hides.
-3. Press the Windows key. The taskbar should appear immediately and remain visible while Start is open.
-4. Close Start or switch back to a normal application. The taskbar hides after a short grace period.
-5. Open **Show hidden icons** (`^`). The taskbar should remain visible and the overflow flyout should stay open until you dismiss it normally.
-6. Right-click the tray icon for settings.
+2. The taskbar stays visible briefly and then hides.
+3. Moving the mouse to the bottom edge should **not** make it appear.
+4. Press the Windows key. The taskbar should appear immediately.
+5. Move the pointer onto the visible taskbar and click **Show hidden icons** (`^`).
+6. The taskbar and overflow flyout should remain visible until you dismiss the flyout normally.
+7. Right-click the Slippery Taskbar notification icon for settings.
 
-The executable is unsigned, so Windows SmartScreen may warn about it. You can build it yourself from this source if you prefer.
+The executable is unsigned, so Windows SmartScreen may warn about it.
 
 ## Build locally
 
 Requirements:
 
 - Go 1.23+
-- Windows 11, Windows 10, macOS or Linux can build the source; the output target is Windows x64.
 
 On Windows PowerShell:
 
@@ -74,7 +102,7 @@ On Windows PowerShell:
 ./build.ps1
 ```
 
-`build.ps1` automatically uses the Windows SDK/MSVC resource tools when they are installed. That embeds the project artwork as the Explorer `.exe` icon and adds Windows version/manifest metadata. The ICO is also embedded directly in the Go program, so the tray/window icon still works even when the resource tools are not available.
+The build script embeds Windows version/manifest metadata plus the project artwork as the Explorer file icon, builds the Windows x64 GUI executable, and writes `SHA256SUMS.txt`.
 
 You can also build directly:
 
@@ -82,36 +110,37 @@ You can also build directly:
 go build -trimpath -ldflags "-H=windowsgui -s -w" -o SlipperyTaskbar.exe .
 ```
 
-For cross-compiling from Linux/macOS:
+Direct Go builds still contain the in-app/tray artwork. `build.ps1` and GitHub Actions additionally stamp the Windows executable resources.
 
-```bash
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags '-H=windowsgui -s -w' -o SlipperyTaskbar.exe .
-```
+## Releases
 
-Direct/cross-compiled builds still contain the in-app/tray artwork; the GitHub Actions and Windows `build.ps1` path produce the fully resource-stamped `.exe`.
+`.github/workflows/build.yml` builds and vets the project on every push and pull request.
 
-## Project artwork
+When `VERSION` is changed to a new semantic version on `main`, the workflow creates a GitHub Release containing:
 
-The project artwork lives at `assets/slippery-taskbar.jpg`. A multi-resolution Windows icon is generated/stored at `assets/slippery-taskbar.ico` and is used by both the tray UI and packaged Windows executable.
+- `SlipperyTaskbar.exe`
+- `SHA256SUMS.txt`
 
-## GitHub Actions
+Published versions are not overwritten by later commits with the same `VERSION` value.
 
-The included `.github/workflows/build.yml` builds a Windows x64 executable, embeds the icon/Windows metadata, generates `SHA256SUMS.txt`, and uploads both as an Actions artifact on pushes, pull requests and manual workflow runs.
+## Diagnostics
 
-## Diagnostics for future Windows builds
+If Windows changes one of its private shell window classes and a panel still causes the taskbar to disappear:
 
-Microsoft can change private shell process/window names in future Windows releases. If one specific shell panel makes the taskbar disappear:
-
-1. Open that panel.
-2. Right-click the Slippery Taskbar tray icon.
+1. Get the taskbar/panel into the broken state.
+2. Open the Slippery Taskbar tray menu.
 3. Choose **Copy diagnostics**.
-4. Paste the copied text into a bug report.
+4. Paste the result into an issue.
 
-It includes the Windows build plus the foreground process/class/title and detected taskbar handles, without collecting documents, keystrokes or other personal content.
+Diagnostics include the Windows build, preferences path, native auto-hide state, detected foreground shell window, overflow state and taskbar handles. They do not copy documents or typed text.
 
 ## Compatibility notes
 
-The implementation targets the stock Windows 11 taskbar and uses public Win32 APIs. ExplorerPatcher, StartAllBack and some Windhawk taskbar mods can change taskbar window classes or geometry and may require extra compatibility handling.
+The implementation targets the stock Windows 11 taskbar and uses Win32 APIs. ExplorerPatcher, StartAllBack and some Windhawk taskbar mods can change taskbar window classes or geometry and may require extra compatibility handling.
+
+## Project artwork
+
+Artwork lives under `assets/` and is used for the project page, notification icon and packaged Windows executable.
 
 ## Credits
 
