@@ -133,12 +133,17 @@ func isVisibleTopLevelClass(className string) bool {
 }
 
 func isTrayOverflowOpen() bool {
+	// Windows 11 has used all three of these for the notification-area overflow
+	// across different releases. XamlExplorerHostIslandWindow is important on
+	// newer builds where the old TopLevelWindowForOverflowXamlIsland check alone
+	// misses the flyout.
 	return isVisibleTopLevelClass("TopLevelWindowForOverflowXamlIsland") ||
+		isVisibleTopLevelClass("XamlExplorerHostIslandWindow") ||
 		isVisibleTopLevelClass("NotifyIconOverflowWindow")
 }
 
 func isShellUIActive() bool {
-	return isShellUIForeground() || isTrayOverflowOpen()
+	return trayMenuOpen || isShellUIForeground() || isTrayOverflowOpen()
 }
 
 func refreshTaskbars() {
