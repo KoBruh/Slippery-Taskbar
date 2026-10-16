@@ -63,6 +63,23 @@ func showTrayMenu() {
 	}
 	defer pDestroyMenu.Call(menu)
 
+	// TrackPopupMenu runs a nested Windows message loop. If taskbar hiding is
+	// allowed to fire while that loop is active, Explorer can invalidate the
+	// notification-area flyout/menu underneath us. Protect the menu for its
+	// entire lifetime and give Explorer a short grace period after it closes.
+	trayMenuOpen = true
+	if !lastShouldShow {
+		applyTaskbarVisibility(true)
+		lastShouldShow = true
+	}
+	defer func() {
+		trayMenuOpen = false
+		candidate := time.Now().Add(shellTransitionGrace)
+		if candidate.After(visibleUntil) {
+			visibleUntil = candidate
+		}
+	}()
+
 	flags := uint32(mfString)
 	if enabled {
 		flags |= mfChecked
