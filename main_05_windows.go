@@ -10,6 +10,16 @@ import (
 	"unsafe"
 )
 
+const (
+	nimSetFocus          = 0x00000003
+	nimSetVersion        = 0x00000004
+	notifyIconVersion4   = 4
+	tpmNoNotify          = 0x0080
+	tpmReturnCmd         = 0x0100
+)
+
+var trayVersion4 bool
+
 func setStartupEnabled(v bool) {
 	startWithWindows = v
 	prefs.StartWithWindows = v
@@ -24,7 +34,14 @@ func addTrayIcon() {
 	if icon == 0 { icon, _, _ = pLoadIconW.Call(0, idiApplication) }
 	tray.HIcon = icon
 	fillUTF16(tray.SzTip[:], appName)
-	pShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&tray)))
+	added, _, _ := pShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&tray)))
+
+	trayVersion4 = false
+	if added != 0 {
+		tray.UTimeoutOrVersion = notifyIconVersion4
+		ok, _, _ := pShellNotifyIconW.Call(nimSetVersion, uintptr(unsafe.Pointer(&tray)))
+		trayVersion4 = ok != 0
+	}
 }
 
 func removeTrayIcon() { pShellNotifyIconW.Call(nimDelete, uintptr(unsafe.Pointer(&tray))) }
@@ -46,6 +63,10 @@ func appendMenu(menu uintptr, flags uint32, id uint32, text string) {
 }
 
 func showTrayMenu() {
+	// Explorer can emit more than one mouse notification for a single right-click.
+	// Never allow a second popup to nest inside the first one.
+	if trayMenuOpen { return }
+
 	var pt point
 	pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	menu, _, _ := pCreatePopupMenu.Call()
@@ -57,11 +78,6 @@ func showTrayMenu() {
 		applyTaskbarVisibility(true)
 		lastShouldShow = true
 	}
-	defer func() {
-		trayMenuOpen = false
-		candidate := time.Now().Add(shellTransitionGrace)
-		if candidate.After(visibleUntil) { visibleUntil = candidate }
-	}()
 
 	flags := uint32(mfString)
 	if enabled { flags |= mfChecked }
@@ -77,8 +93,21 @@ func showTrayMenu() {
 	appendMenu(menu, mfString, cmdExit, "Exit")
 
 	pSetForegroundWindow.Call(hwnd)
-	pTrackPopupMenu.Call(menu, tpmRightButton|tpmBottomAlign|tpmLeftAlign, uintptr(pt.X), uintptr(pt.Y), 0, hwnd, 0)
+	selected, _, _ := pTrackPopupMenu.Call(menu,
+		tpmRightButton|tpmBottomAlign|tpmLeftAlign|tpmNoNotify|tpmReturnCmd,
+		uintptr(pt.X), uintptr(pt.Y), 0, hwnd, 0)
+
+	// The popup is now fully dismissed. Restore focus to Explorer's notification
+	// area before changing taskbar/app state, then execute the selected command.
+	trayMenuOpen = false
+	candidate := time.Now().Add(shellTransitionGrace)
+	if candidate.After(visibleUntil) { visibleUntil = candidate }
+	pShellNotifyIconW.Call(nimSetFocus, uintptr(unsafe.Pointer(&tray)))
 	pPostMessageW.Call(hwnd, wmNull, 0, 0)
+
+	if selected != 0 {
+		handleCommand(uint32(selected & 0xffff))
+	}
 }
 
 func copyTextToClipboard(text string) bool {
@@ -118,6 +147,7 @@ func copyDiagnostics() {
 	fmt.Fprintf(&b, "Preferences: %s\r\n", preferencesFilePath())
 	fmt.Fprintf(&b, "Enabled: %t\r\nStart with Windows: %t\r\nKeep visible while interacting: %t\r\n", enabled, startWithWindows, prefs.KeepVisibleWhileInteracting)
 	fmt.Fprintf(&b, "Native auto-hide active: %t\r\n", appbarState&absAutoHide != 0)
+	fmt.Fprintf(&b, "Tray protocol v4: %t\r\n", trayVersion4)
 	fmt.Fprintf(&b, "Win key down: %t\r\nShell UI foreground: %t\r\nTray overflow open: %t\r\nTaskbars found: %d\r\n", winDown, isShellUIForeground(), isTrayOverflowOpen(), len(taskbars))
 	appendWindowDiag := func(label string, h uintptr) {
 		fmt.Fprintf(&b, "%s: hwnd=0x%x", label, h)
