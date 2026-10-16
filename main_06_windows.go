@@ -99,7 +99,6 @@ func windowProc(h uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		return 0
 	case wmDisplayChange, wmSettingChange:
 		refreshTaskbars()
-		ensureAutohideForEnabledState()
 		return 0
 	case wmPowerBroadcast:
 		if wParam == pbtApmResumeAutomatic || wParam == pbtApmResumeSuspend {
