@@ -1,56 +1,55 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exe = Join-Path $root 'SlipperyTaskbar.exe'
-$res = Join-Path $root 'app.res'
-$syso = Join-Path $root 'resource_windows_amd64.syso'
-
-function Find-LatestFile([string]$pattern) {
-    $items = Get-ChildItem -Path $pattern -File -ErrorAction SilentlyContinue | Sort-Object FullName -Descending
-    if ($items) { return $items[0].FullName }
-    return $null
-}
+$syso = Join-Path $root 'rsrc_windows_amd64.syso'
+$versionFile = Join-Path $root 'VERSION'
 
 Push-Location $root
 try {
-    Remove-Item $res, $syso -Force -ErrorAction SilentlyContinue
-
-    # Optional PE resources: when the Windows SDK/MSVC tools are present this
-    # embeds the supplied artwork as the .exe icon and adds version/manifest
-    # metadata. The program also embeds the ICO in Go, so the tray/window icon
-    # still works when these tools are unavailable.
-    $kits = ${env:ProgramFiles(x86)}
-    $rc = $null
-    if ($kits) {
-        $rc = Find-LatestFile (Join-Path $kits 'Windows Kits\10\bin\*\x64\rc.exe')
+    if (-not (Test-Path $versionFile)) {
+        throw 'VERSION file is missing.'
     }
 
-    $cvtres = $null
-    $vswhere = if ($kits) { Join-Path $kits 'Microsoft Visual Studio\Installer\vswhere.exe' } else { $null }
-    if ($vswhere -and (Test-Path $vswhere)) {
-        $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        if ($vs) {
-            $cvtres = Find-LatestFile (Join-Path $vs 'VC\Tools\MSVC\*\bin\Hostx64\x64\cvtres.exe')
-        }
+    $version = (Get-Content $versionFile -Raw).Trim()
+    if ($version -notmatch '^\d+\.\d+\.\d+$') {
+        throw "VERSION must be in X.Y.Z format, got '$version'"
     }
+    $version4 = "$version.0"
 
-    if ($rc -and $cvtres) {
-        & $rc /nologo "/fo$res" (Join-Path $root 'app.rc')
-        if ($LASTEXITCODE -ne 0) { throw "rc.exe failed with exit code $LASTEXITCODE" }
-        & $cvtres /nologo /machine:x64 "/out:$syso" $res
-        if ($LASTEXITCODE -ne 0) { throw "cvtres.exe failed with exit code $LASTEXITCODE" }
-        Write-Host 'Embedded Slippery Taskbar icon and Windows metadata.'
-    } else {
-        Write-Warning 'Windows resource tools not found; building without the Explorer .exe icon. The in-app/tray icon is still embedded.'
+    Remove-Item $syso -Force -ErrorAction SilentlyContinue
+
+    # Use a Go-native resource packer instead of Microsoft's rc.exe.
+    # This accepts modern ICO/PNG icon data directly and avoids RC2176
+    # ('old DIB') failures while still embedding the Explorer icon,
+    # GUI manifest, and version metadata in the final PE executable.
+    & go run github.com/tc-hib/go-winres@v0.3.1 simply `
+        --arch amd64 `
+        --out rsrc `
+        --manifest gui `
+        --icon 'assets\slippery-taskbar.ico' `
+        --file-version $version4 `
+        --product-version $version4 `
+        --file-description 'Slippery Taskbar' `
+        --product-name 'Slippery Taskbar' `
+        --original-filename 'SlipperyTaskbar.exe'
+    if ($LASTEXITCODE -ne 0) {
+        throw "go-winres failed with exit code $LASTEXITCODE"
+    }
+    if (-not (Test-Path $syso)) {
+        throw "go-winres did not create $syso"
     }
 
     go build -trimpath -ldflags "-H=windowsgui -s -w" -o $exe .
-    if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) {
+        throw "go build failed with exit code $LASTEXITCODE"
+    }
 
     $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
     "$hash  SlipperyTaskbar.exe" | Set-Content -Encoding ascii (Join-Path $root 'SHA256SUMS.txt')
+    Write-Host "Built Slippery Taskbar $version"
     Write-Host "Built: $exe"
     Write-Host "SHA-256: $hash"
 } finally {
-    Remove-Item $res, $syso -Force -ErrorAction SilentlyContinue
+    Remove-Item $syso -Force -ErrorAction SilentlyContinue
     Pop-Location
 }
