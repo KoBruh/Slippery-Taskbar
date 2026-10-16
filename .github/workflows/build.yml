@@ -22,6 +22,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
+          cache: false
 
       - name: Compile C# app
         shell: cmd
@@ -32,6 +33,8 @@ jobs:
         run: |
           $version = (Get-Content VERSION -Raw).Trim()
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "VERSION must be X.Y.Z" }
+
+          Copy-Item .\src\slippery-taskbar.generated.ico .\bootstrap\payload\slippery-taskbar.ico -Force
 
           Push-Location bootstrap
           go vet ./...

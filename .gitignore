@@ -2,6 +2,9 @@ src/bin/
 src/obj/
 src/publish/
 src/SlipperyTaskbar.exe
+src/IconConverter.exe
+src/slippery-taskbar.generated.ico
 bootstrap/*.exe
+bootstrap/payload/slippery-taskbar.ico
 *.pdb
 SHA256SUMS.txt
