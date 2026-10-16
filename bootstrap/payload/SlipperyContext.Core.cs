@@ -67,10 +67,6 @@ namespace SlipperyTaskbar
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_WIN | NativeMethods.MOD_NOREPEAT,
                 NativeMethods.VK_F11);
 
-            // Observe notification-area pointer activity before Explorer processes it.
-            // Native auto-hide remains enabled and stable for the entire enabled
-            // session; this hook only starts a short visibility guard so Explorer
-            // cannot slide the bar away underneath the hidden-icons flyout.
             _mouseHookProc = MouseHookCallback;
             _mouseHook = NativeMethods.InstallLowLevelMouseHook(_mouseHookProc);
 
@@ -88,10 +84,7 @@ namespace SlipperyTaskbar
             _menu.ItemClicked += OnMenuItemClicked;
             _menu.Closed += OnMenuClosed;
 
-            Icon appIcon = null;
-            try { appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
-            catch { }
-            if (appIcon == null) appIcon = SystemIcons.Application;
+            Icon appIcon = LoadAppIcon();
 
             _notifyIcon = new NotifyIcon();
             _notifyIcon.Icon = appIcon;
@@ -111,6 +104,35 @@ namespace SlipperyTaskbar
             _timer.Interval = 30;
             _timer.Tick += delegate { PollTaskbarState(); };
             _timer.Start();
+        }
+
+        private static Icon LoadAppIcon()
+        {
+            string exeDir = Path.GetDirectoryName(Application.ExecutablePath) ?? string.Empty;
+            string[] candidates = new string[]
+            {
+                Path.Combine(exeDir, "managed-source", "slippery-taskbar.ico"),
+                Path.Combine(exeDir, "slippery-taskbar.ico"),
+                Path.GetFullPath(Path.Combine(exeDir, "..", "assets", "slippery-taskbar.ico"))
+            };
+
+            foreach (string candidate in candidates)
+            {
+                try
+                {
+                    if (File.Exists(candidate)) return new Icon(candidate);
+                }
+                catch { }
+            }
+
+            try
+            {
+                Icon associated = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (associated != null) return associated;
+            }
+            catch { }
+
+            return SystemIcons.Application;
         }
 
         private ToolStripMenuItem AddMenuItem(string text, TrayCommand command)
@@ -151,9 +173,6 @@ namespace SlipperyTaskbar
             _pendingCommand = TrayCommand.None;
             if (command != TrayCommand.None)
             {
-                // Run after WinForms has completely unwound ContextMenuStrip's
-                // nested popup loop. This avoids the stale-focus/menu bug from
-                // the earlier raw Shell_NotifyIcon implementation.
                 _window.BeginInvoke((MethodInvoker)delegate { ExecuteCommand(command); });
             }
         }
@@ -219,6 +238,5 @@ namespace SlipperyTaskbar
             prefs.StartWithWindows = _startWithWindows;
             _preferencesStore.Save(prefs);
         }
-
     }
 }

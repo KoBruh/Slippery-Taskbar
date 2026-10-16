@@ -10,7 +10,6 @@ if not exist "%CSC%" (
 
 "%CSC%" /nologo /target:winexe /optimize+ /platform:x64 ^
  /out:"%ROOT%SlipperyTaskbar.exe" ^
- /win32icon:"%ROOT%..\assets\slippery-taskbar.ico" ^
  /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll ^
  /reference:System.Windows.Forms.dll /reference:System.Runtime.Serialization.dll ^
  "%ROOT%Program.cs" "%ROOT%SlipperyContext.Core.cs" "%ROOT%SlipperyContext.Polling.cs" ^
