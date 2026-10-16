@@ -91,6 +91,7 @@ var (
 	winDown                bool
 	rawLeftWin             bool
 	rawRightWin            bool
+	trayMenuOpen           bool
 	lastRawWinEvent        time.Time
 	visibleUntil           time.Time
 	lastShouldShow         = true
