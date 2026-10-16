@@ -18,14 +18,14 @@ try {
 
     Remove-Item $syso -Force -ErrorAction SilentlyContinue
 
-    # Embed manifest and version metadata with a Go-native resource packer.
-    # The application/tray icon is embedded separately in icon_windows.go.
-    # Keeping icon decoding out of this step avoids Windows rc.exe RC2176 and
-    # malformed-ICO parser failures from breaking CI/release builds.
+    # Embed manifest/version metadata and the Explorer file icon with a Go-native
+    # resource packer. Use the source PNG directly: the previous ICO container was
+    # accepted by the tray loader but rejected by both rc.exe and go-winres.
     & go run github.com/tc-hib/go-winres@v0.3.1 simply `
         --arch amd64 `
         --out rsrc `
         --manifest gui `
+        --icon 'assets\slippery-taskbar.png' `
         --file-version $version4 `
         --product-version $version4 `
         --file-description 'Slippery Taskbar' `
