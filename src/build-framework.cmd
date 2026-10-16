@@ -14,7 +14,7 @@ set ICON=%ROOT%slippery-taskbar.generated.ico
  /reference:System.dll /reference:System.Drawing.dll ^
  "%ROOT%IconConverter.cs"
 if errorlevel 1 exit /b %errorlevel%
-"%ICON_TOOL%" "%ROOT%..\assets\slippery-taskbar.ico" "%ICON%"
+"%ICON_TOOL%" "%ROOT%..\assets\slippery-taskbar.jpg" "%ICON%"
 if errorlevel 1 exit /b %errorlevel%
 
 "%CSC%" /nologo /target:winexe /optimize+ /platform:x64 ^
