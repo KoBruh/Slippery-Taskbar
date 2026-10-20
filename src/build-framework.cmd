@@ -15,6 +15,7 @@ if not exist "%CSC%" (
  "%ROOT%Program.cs" "%ROOT%SlipperyContext.Core.cs" "%ROOT%SlipperyContext.Polling.cs" ^
  "%ROOT%SlipperyContext.Messages.cs" "%ROOT%SlipperyContext.Diagnostics.cs" "%ROOT%Support.cs" ^
  "%ROOT%TaskbarController.Core.cs" "%ROOT%TaskbarController.WorkArea.cs" ^
- "%ROOT%TaskbarController.Shell.cs" "%ROOT%CrashLog.cs" "%ROOT%NativeMethods.cs"
+ "%ROOT%TaskbarController.Shell.cs" "%ROOT%TaskbarController.GapWatch.cs" ^
+ "%ROOT%CrashLog.cs" "%ROOT%NativeMethods.cs"
 if errorlevel 1 exit /b %errorlevel%
 echo Built %ROOT%SlipperyTaskbar.exe
