@@ -38,6 +38,10 @@ namespace SlipperyTaskbar
         private bool _lastShouldShow = true;
         private DateTime _lastApplyUtc = DateTime.MinValue;
         private DateTime _trayInteractionPinUntilUtc = DateTime.MinValue;
+        private DateTime _lastAppbarPolicyCheckUtc = DateTime.MinValue;
+        private DateTime _lastAppbarPolicyRepairUtc = DateTime.MinValue;
+        private int _appbarPolicyRepairAttempts;
+        private int _appbarPolicyRepairSuccesses;
         private IntPtr _mouseHook = IntPtr.Zero;
         private NativeMethods.LowLevelMouseProc _mouseHookProc;
         private bool _disposed;
@@ -49,6 +53,7 @@ namespace SlipperyTaskbar
         private static readonly TimeSpan TrayInteractionPinGrace = TimeSpan.FromMilliseconds(900);
         private static readonly TimeSpan TrayClickPinGrace = TimeSpan.FromMilliseconds(1800);
         private static readonly TimeSpan TrayHoverPinGrace = TimeSpan.FromMilliseconds(500);
+        private static readonly TimeSpan AppbarPolicyWatchInterval = TimeSpan.FromMilliseconds(500);
 
         public SlipperyContext()
         {
@@ -215,6 +220,7 @@ namespace SlipperyTaskbar
             _trayInteractionPinUntilUtc = DateTime.MinValue;
             _taskbars.EnsureAppbarPolicy(_enabled);
             _taskbars.EnsureWorkAreaPolicy(_enabled);
+            _lastAppbarPolicyCheckUtc = DateTime.MinValue;
 
             if (!_enabled)
             {
