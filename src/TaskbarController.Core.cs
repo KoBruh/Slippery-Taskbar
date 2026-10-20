@@ -73,11 +73,6 @@ namespace SlipperyTaskbar
             {
                 if (!NativeMethods.IsWindow(h)) continue;
 
-                // Match Buttery Taskbar's least-invasive visibility model: one
-                // synchronous ShowWindow call, with Explorer left in control of the
-                // taskbar's own auto-hide/XAML animation and position. Do not pair
-                // this with SetWindowPos or force the bar back onto the monitor; those
-                // operations can fight Explorer mid-animation and create a flash.
                 NativeMethods.ShowWindow(h, show ? NativeMethods.SW_SHOWNOACTIVATE : NativeMethods.SW_HIDE);
             }
         }
@@ -131,8 +126,12 @@ namespace SlipperyTaskbar
 
         private void SetAppbarState(uint state)
         {
+            IntPtr primaryTaskbar = NativeMethods.FindWindow("Shell_TrayWnd", null);
+            if (primaryTaskbar == IntPtr.Zero) return;
+
             NativeMethods.APPBARDATA data = new NativeMethods.APPBARDATA();
             data.cbSize = (uint)Marshal.SizeOf(typeof(NativeMethods.APPBARDATA));
+            data.hWnd = primaryTaskbar;
             data.lParam = new IntPtr((long)state);
             NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETSTATE, ref data);
         }
