@@ -13,8 +13,8 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>1.0.1</Version>
-    <FileVersion>1.0.1.0</FileVersion>
+    <Version>1.0.4</Version>
+    <FileVersion>1.0.4.0</FileVersion>
     <Product>Slippery Taskbar</Product>
     <Description>Hide the Windows 11 taskbar until the Windows key or shell UI intentionally reveals it.</Description>
   </PropertyGroup>
