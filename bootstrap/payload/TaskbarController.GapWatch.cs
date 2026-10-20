@@ -17,6 +17,7 @@ namespace SlipperyTaskbar
     internal sealed partial class TaskbarController
     {
         private DateTime _lastForegroundGapCheckUtc = DateTime.MinValue;
+        private int _foregroundGapCorrections;
 
         [DllImport("user32.dll")]
         private static extern bool IsZoomed(IntPtr hWnd);
@@ -91,7 +92,15 @@ namespace SlipperyTaskbar
 
             if (NativeMethods.SetWindowPos(hWnd, IntPtr.Zero, x, y, cx, cy,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOSENDCHANGING))
+            {
                 _lastGapCorrections++;
+                _foregroundGapCorrections++;
+            }
+        }
+
+        public int ForegroundGapCorrectionCount
+        {
+            get { return _foregroundGapCorrections; }
         }
     }
 }
