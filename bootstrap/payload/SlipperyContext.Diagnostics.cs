@@ -20,7 +20,7 @@ namespace SlipperyTaskbar
         {
             StringBuilder b = new StringBuilder();
             b.AppendLine("Slippery Taskbar C# diagnostics");
-            b.AppendLine("Build: 1.0.0");
+            b.AppendLine("Build: 1.0.4-policy");
             b.AppendLine("Runtime: " + Environment.Version);
             b.AppendLine("OS: " + Environment.OSVersion);
             b.AppendLine("Executable: " + Application.ExecutablePath);
@@ -29,6 +29,9 @@ namespace SlipperyTaskbar
             b.AppendLine("Start with Windows: " + _startWithWindows);
             b.AppendLine("Keep visible while interacting: " + _preferencesStore.Current.KeepVisibleWhileInteracting);
             b.AppendLine("Native auto-hide active: " + ((_taskbars.GetAppbarState() & NativeMethods.ABS_AUTOHIDE) != 0));
+            b.AppendLine("Appbar policy repair attempts: " + _appbarPolicyRepairAttempts);
+            b.AppendLine("Appbar policy repair successes: " + _appbarPolicyRepairSuccesses);
+            b.AppendLine("Last appbar policy repair UTC: " + (_lastAppbarPolicyRepairUtc == DateTime.MinValue ? "never" : _lastAppbarPolicyRepairUtc.ToString("O")));
             b.AppendLine("Tray visibility guard active: " + (DateTime.UtcNow < _trayInteractionPinUntilUtc || _taskbars.IsTrayOverflowOpen()));
             b.AppendLine("Notification-area mouse guard installed: " + (_mouseHook != IntPtr.Zero));
             b.AppendLine("Work area: " + _taskbars.DescribeWorkArea());
