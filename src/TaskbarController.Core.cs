@@ -22,12 +22,26 @@ namespace SlipperyTaskbar
         private bool _originalAppbarCaptured;
         private readonly List<WorkAreaEntry> _originalWorkAreas = new List<WorkAreaEntry>();
         private bool _workAreasCaptured;
+        private int _lastGapCorrections;
 
         private sealed class WorkAreaEntry
         {
             public NativeMethods.RECT Monitor;
             public NativeMethods.RECT Work;
         }
+
+        private sealed class TaskbarEdgeInfo
+        {
+            public IntPtr Monitor;
+            public NativeMethods.RECT MonitorRect;
+            public int Edge;
+            public int Thickness;
+        }
+
+        private const int EdgeTop = 0;
+        private const int EdgeLeft = 1;
+        private const int EdgeRight = 2;
+        private const int EdgeBottom = 3;
 
         public TaskbarController(string stateDirectory)
         {
@@ -69,12 +83,147 @@ namespace SlipperyTaskbar
         public void ApplyVisibility(bool show)
         {
             RefreshTaskbars();
+            List<TaskbarEdgeInfo> edges = show ? null : CaptureTaskbarEdges();
+
             foreach (IntPtr h in _taskbars)
             {
                 if (!NativeMethods.IsWindow(h)) continue;
-
                 NativeMethods.ShowWindow(h, show ? NativeMethods.SW_SHOWNOACTIVATE : NativeMethods.SW_HIDE);
             }
+
+            if (!show && edges != null)
+                CorrectTopAndSideMaximizedGaps(edges);
+        }
+
+        private List<TaskbarEdgeInfo> CaptureTaskbarEdges()
+        {
+            List<TaskbarEdgeInfo> edges = new List<TaskbarEdgeInfo>();
+            foreach (IntPtr taskbar in _taskbars)
+            {
+                NativeMethods.RECT taskbarRect;
+                if (!NativeMethods.GetWindowRect(taskbar, out taskbarRect)) continue;
+
+                IntPtr monitor = NativeMethods.MonitorFromWindow(taskbar, NativeMethods.MONITOR_DEFAULTTONEAREST);
+                if (monitor == IntPtr.Zero) continue;
+
+                NativeMethods.MONITORINFO mi = new NativeMethods.MONITORINFO();
+                mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFO));
+                if (!NativeMethods.GetMonitorInfo(monitor, ref mi)) continue;
+
+                int width = taskbarRect.Right - taskbarRect.Left;
+                int height = taskbarRect.Bottom - taskbarRect.Top;
+                if (width <= 0 || height <= 0) continue;
+
+                TaskbarEdgeInfo info = new TaskbarEdgeInfo();
+                info.Monitor = monitor;
+                info.MonitorRect = mi.rcMonitor;
+                if (width >= height)
+                {
+                    bool top = Math.Abs(taskbarRect.Top - mi.rcMonitor.Top) <=
+                               Math.Abs(taskbarRect.Bottom - mi.rcMonitor.Bottom);
+                    info.Edge = top ? EdgeTop : EdgeBottom;
+                    info.Thickness = height;
+                }
+                else
+                {
+                    bool left = Math.Abs(taskbarRect.Left - mi.rcMonitor.Left) <=
+                                Math.Abs(taskbarRect.Right - mi.rcMonitor.Right);
+                    info.Edge = left ? EdgeLeft : EdgeRight;
+                    info.Thickness = width;
+                }
+                edges.Add(info);
+            }
+            return edges;
+        }
+
+        private void CorrectTopAndSideMaximizedGaps(List<TaskbarEdgeInfo> edges)
+        {
+            _lastGapCorrections = 0;
+            foreach (TaskbarEdgeInfo edge in edges)
+            {
+                // Bottom placement already behaves correctly on Windows 11. Keep this
+                // fix narrowly scoped to the top/left/right placements that leave a
+                // stale taskbar-sized maximize gap.
+                if (edge.Edge == EdgeBottom) continue;
+
+                NativeMethods.EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
+                {
+                    if (!NativeMethods.IsWindowVisible(hWnd)) return true;
+                    string cls = GetWindowClass(hWnd);
+                    if (IsTaskbarClass(cls)) return true;
+
+                    IntPtr monitor = NativeMethods.MonitorFromWindow(hWnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+                    if (monitor != edge.Monitor) return true;
+
+                    NativeMethods.RECT r;
+                    if (!NativeMethods.GetWindowRect(hWnd, out r)) return true;
+                    int width = r.Right - r.Left;
+                    int height = r.Bottom - r.Top;
+                    if (width <= 0 || height <= 0) return true;
+
+                    NativeMethods.RECT m = edge.MonitorRect;
+                    int tolerance = Math.Max(16, edge.Thickness / 2);
+                    int minGap = Math.Max(12, edge.Thickness / 3);
+                    int maxGap = Math.Max(160, edge.Thickness * 3);
+                    int gap = 0;
+                    bool looksMaximized = false;
+
+                    if (edge.Edge == EdgeTop)
+                    {
+                        gap = r.Top - m.Top;
+                        looksMaximized = r.Left <= m.Left + tolerance &&
+                                         r.Right >= m.Right - tolerance &&
+                                         r.Bottom >= m.Bottom - tolerance;
+                    }
+                    else if (edge.Edge == EdgeLeft)
+                    {
+                        gap = r.Left - m.Left;
+                        looksMaximized = r.Top <= m.Top + tolerance &&
+                                         r.Bottom >= m.Bottom - tolerance &&
+                                         r.Right >= m.Right - tolerance;
+                    }
+                    else if (edge.Edge == EdgeRight)
+                    {
+                        gap = m.Right - r.Right;
+                        looksMaximized = r.Top <= m.Top + tolerance &&
+                                         r.Bottom >= m.Bottom - tolerance &&
+                                         r.Left <= m.Left + tolerance;
+                    }
+
+                    if (!looksMaximized || gap < minGap || gap > maxGap) return true;
+
+                    int x = r.Left;
+                    int y = r.Top;
+                    int cx = width;
+                    int cy = height;
+
+                    if (edge.Edge == EdgeTop)
+                    {
+                        y -= gap;
+                        cy += gap;
+                    }
+                    else if (edge.Edge == EdgeLeft)
+                    {
+                        x -= gap;
+                        cx += gap;
+                    }
+                    else if (edge.Edge == EdgeRight)
+                    {
+                        cx += gap;
+                    }
+
+                    if (NativeMethods.SetWindowPos(hWnd, IntPtr.Zero, x, y, cx, cy,
+                        NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOSENDCHANGING))
+                        _lastGapCorrections++;
+
+                    return true;
+                }, IntPtr.Zero);
+            }
+        }
+
+        public int LastGapCorrectionCount
+        {
+            get { return _lastGapCorrections; }
         }
 
         private static void ForceTaskbarOnScreen(IntPtr h)
