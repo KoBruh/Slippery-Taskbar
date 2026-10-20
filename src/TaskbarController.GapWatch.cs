@@ -17,6 +17,7 @@ namespace SlipperyTaskbar
     internal sealed partial class TaskbarController
     {
         private DateTime _lastForegroundGapCheckUtc = DateTime.MinValue;
+        private int _foregroundGapCorrections;
 
         [DllImport("user32.dll")]
         private static extern bool IsZoomed(IntPtr hWnd);
@@ -64,9 +65,6 @@ namespace SlipperyTaskbar
             int right = r.Right;
             int bottom = r.Bottom;
 
-            // Correct only a single stale taskbar-sized edge while the other three
-            // edges already look maximized. Bottom is intentionally excluded because
-            // the normal Windows 11 bottom-taskbar path already behaves correctly.
             if (topGap >= 12 && topGap <= maxGap &&
                 Math.Abs(leftGap) <= tolerance && Math.Abs(rightGap) <= tolerance && Math.Abs(bottomGap) <= tolerance)
             {
@@ -94,7 +92,15 @@ namespace SlipperyTaskbar
 
             if (NativeMethods.SetWindowPos(hWnd, IntPtr.Zero, x, y, cx, cy,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOSENDCHANGING))
+            {
                 _lastGapCorrections++;
+                _foregroundGapCorrections++;
+            }
+        }
+
+        public int ForegroundGapCorrectionCount
+        {
+            get { return _foregroundGapCorrections; }
         }
     }
 }
