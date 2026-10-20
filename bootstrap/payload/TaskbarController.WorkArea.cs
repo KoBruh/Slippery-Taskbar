@@ -16,11 +16,28 @@ namespace SlipperyTaskbar
 {
     internal sealed partial class TaskbarController
     {
+        private bool _lastWorkAreaCorrectionSucceeded;
+
         public void EnsureWorkAreaPolicy(bool enabled)
         {
             _originalWorkAreas.Clear();
             _workAreasCaptured = false;
             DeleteWorkAreaState();
+            _lastWorkAreaCorrectionSucceeded = false;
+
+            if (!enabled) return;
+
+            Screen[] screens = Screen.AllScreens;
+            if (screens.Length == 0) return;
+
+            bool success = true;
+            foreach (Screen screen in screens)
+            {
+                NativeMethods.RECT full = RectFromRectangle(screen.Bounds);
+                if (!NativeMethods.SystemParametersInfoSetWorkArea(ref full, NativeMethods.SPIF_SENDCHANGE))
+                    success = false;
+            }
+            _lastWorkAreaCorrectionSucceeded = success;
         }
 
         private void CaptureOriginalWorkAreas()
@@ -197,6 +214,7 @@ namespace SlipperyTaskbar
                 b.Append(" work=").Append(RectangleText(screens[i].WorkingArea));
             }
             b.Append(", reservation=native-auto-hide");
+            b.Append(", correction=").Append(_lastWorkAreaCorrectionSucceeded);
             return b.ToString();
         }
 
@@ -204,6 +222,5 @@ namespace SlipperyTaskbar
         {
             return string.Format("[{0},{1},{2},{3}]", r.Left, r.Top, r.Right, r.Bottom);
         }
-
     }
 }

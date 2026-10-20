@@ -20,7 +20,7 @@ namespace SlipperyTaskbar
         {
             StringBuilder b = new StringBuilder();
             b.AppendLine("Slippery Taskbar C# diagnostics");
-            b.AppendLine("Build: 1.0.0");
+            b.AppendLine("Build: 1.0.2-test");
             b.AppendLine("Runtime: " + Environment.Version);
             b.AppendLine("OS: " + Environment.OSVersion);
             b.AppendLine("Executable: " + Application.ExecutablePath);
@@ -39,9 +39,10 @@ namespace SlipperyTaskbar
             IList<IntPtr> taskbars = _taskbars.RefreshTaskbars();
             b.AppendLine("Taskbars found: " + taskbars.Count);
             IntPtr foreground = NativeMethods.GetForegroundWindow();
-            b.AppendLine("Foreground: " + _taskbars.DescribeWindow(foreground));
+            b.AppendLine("Foreground: " + DescribeWindowGeometry(foreground));
             for (int i = 0; i < taskbars.Count; i++)
-                b.AppendLine("Taskbar " + i + ": " + _taskbars.DescribeWindow(taskbars[i]));
+                b.AppendLine("Taskbar " + i + ": " + DescribeWindowGeometry(taskbars[i]));
+            b.AppendLine("Maximized windows: " + DescribeMaximizedWindows());
 
             try
             {
@@ -52,6 +53,51 @@ namespace SlipperyTaskbar
             {
                 CrashLog.Write(ex);
             }
+        }
+
+        private string DescribeWindowGeometry(IntPtr h)
+        {
+            if (h == IntPtr.Zero) return "hwnd=0";
+            StringBuilder b = new StringBuilder(_taskbars.DescribeWindow(h));
+
+            NativeMethods.RECT windowRect;
+            if (NativeMethods.GetWindowRect(h, out windowRect))
+            {
+                b.Append(", rect=").Append(RectText(windowRect));
+            }
+
+            IntPtr monitor = NativeMethods.MonitorFromWindow(h, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            if (monitor != IntPtr.Zero)
+            {
+                NativeMethods.MONITORINFO mi = new NativeMethods.MONITORINFO();
+                mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFO));
+                if (NativeMethods.GetMonitorInfo(monitor, ref mi))
+                {
+                    b.Append(", monitor=").Append(RectText(mi.rcMonitor));
+                    b.Append(", nativeWork=").Append(RectText(mi.rcWork));
+                }
+            }
+            return b.ToString();
+        }
+
+        private string DescribeMaximizedWindows()
+        {
+            List<string> windows = new List<string>();
+            NativeMethods.EnumWindows(delegate(IntPtr h, IntPtr lParam)
+            {
+                if (windows.Count >= 12) return false;
+                if (!NativeMethods.IsWindowVisible(h) || !NativeMethods.IsZoomed(h)) return true;
+                windows.Add(DescribeWindowGeometry(h));
+                return true;
+            }, IntPtr.Zero);
+
+            if (windows.Count == 0) return "none";
+            return string.Join(" | ", windows.ToArray());
+        }
+
+        private static string RectText(NativeMethods.RECT r)
+        {
+            return string.Format("[{0},{1},{2},{3}]", r.Left, r.Top, r.Right, r.Bottom);
         }
 
         protected override void ExitThreadCore()
