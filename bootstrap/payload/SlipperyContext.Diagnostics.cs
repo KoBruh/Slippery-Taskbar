@@ -20,7 +20,7 @@ namespace SlipperyTaskbar
         {
             StringBuilder b = new StringBuilder();
             b.AppendLine("Slippery Taskbar C# diagnostics");
-            b.AppendLine("Build: 1.0.0");
+            b.AppendLine("Build: 1.0.1");
             b.AppendLine("Runtime: " + Environment.Version);
             b.AppendLine("OS: " + Environment.OSVersion);
             b.AppendLine("Executable: " + Application.ExecutablePath);
