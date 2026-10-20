@@ -22,6 +22,9 @@ namespace SlipperyTaskbar
         private bool _originalAppbarCaptured;
         private readonly List<WorkAreaEntry> _originalWorkAreas = new List<WorkAreaEntry>();
         private bool _workAreasCaptured;
+        private DateTime _lastForcedMaximizedPassUtc = DateTime.MinValue;
+        private int _lastForcedMaximizedCount;
+        private int _totalForcedMaximizedCount;
 
         private sealed class WorkAreaEntry
         {
@@ -75,6 +78,96 @@ namespace SlipperyTaskbar
 
                 NativeMethods.ShowWindow(h, show ? NativeMethods.SW_SHOWNOACTIVATE : NativeMethods.SW_HIDE);
             }
+        }
+
+        public void ForceAllMaximizedWindowsIntoTopAndSideGaps()
+        {
+            DateTime now = DateTime.UtcNow;
+            if (_lastForcedMaximizedPassUtc != DateTime.MinValue &&
+                now - _lastForcedMaximizedPassUtc < TimeSpan.FromMilliseconds(90))
+                return;
+            _lastForcedMaximizedPassUtc = now;
+            _lastForcedMaximizedCount = 0;
+
+            NativeMethods.EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
+            {
+                if (!NativeMethods.IsWindow(hWnd) || !NativeMethods.IsWindowVisible(hWnd)) return true;
+                if (!NativeMethods.IsZoomed(hWnd)) return true;
+
+                string cls = GetWindowClass(hWnd);
+                if (IsTaskbarClass(cls) || IsShellUiWindow(hWnd)) return true;
+
+                IntPtr monitor = NativeMethods.MonitorFromWindow(hWnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+                if (monitor == IntPtr.Zero) return true;
+
+                NativeMethods.MONITORINFO mi = new NativeMethods.MONITORINFO();
+                mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFO));
+                if (!NativeMethods.GetMonitorInfo(monitor, ref mi)) return true;
+
+                int topReserve = mi.rcWork.Top - mi.rcMonitor.Top;
+                int leftReserve = mi.rcWork.Left - mi.rcMonitor.Left;
+                int rightReserve = mi.rcMonitor.Right - mi.rcWork.Right;
+
+                // Bottom placement already behaves correctly. Only force windows when
+                // Windows is still reserving a meaningful strip on the top/left/right.
+                if (topReserve < 8 && leftReserve < 8 && rightReserve < 8) return true;
+
+                NativeMethods.RECT r;
+                if (!NativeMethods.GetWindowRect(hWnd, out r)) return true;
+
+                int tolerance = 40;
+                bool looksLikeWorkAreaMaximized =
+                    r.Left <= mi.rcWork.Left + tolerance &&
+                    r.Top <= mi.rcWork.Top + tolerance &&
+                    r.Right >= mi.rcWork.Right - tolerance &&
+                    r.Bottom >= mi.rcWork.Bottom - tolerance;
+                if (!looksLikeWorkAreaMaximized) return true;
+
+                IntPtr stylePtr = NativeMethods.GetWindowLongPtr(hWnd, NativeMethods.GWL_STYLE);
+                long style = stylePtr.ToInt64();
+                if ((style & NativeMethods.WS_MAXIMIZE) == 0) return true;
+
+                int extraLeft = Math.Max(0, mi.rcWork.Left - r.Left);
+                int extraTop = Math.Max(0, mi.rcWork.Top - r.Top);
+                int extraRight = Math.Max(0, r.Right - mi.rcWork.Right);
+                int extraBottom = Math.Max(0, r.Bottom - mi.rcWork.Bottom);
+
+                int x = mi.rcMonitor.Left - extraLeft;
+                int y = mi.rcMonitor.Top - extraTop;
+                int right = mi.rcMonitor.Right + extraRight;
+                int bottom = mi.rcMonitor.Bottom + extraBottom;
+                int cx = right - x;
+                int cy = bottom - y;
+                if (cx <= 0 || cy <= 0) return true;
+
+                IntPtr restoredStyle = new IntPtr(style & ~NativeMethods.WS_MAXIMIZE);
+                IntPtr previousStyle = NativeMethods.SetWindowLongPtr(hWnd, NativeMethods.GWL_STYLE, restoredStyle);
+                bool clearedMaximizeStyle = previousStyle != IntPtr.Zero;
+
+                bool moved = NativeMethods.SetWindowPos(hWnd, IntPtr.Zero, x, y, cx, cy,
+                    NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOSENDCHANGING);
+
+                if (clearedMaximizeStyle)
+                    NativeMethods.SetWindowLongPtr(hWnd, NativeMethods.GWL_STYLE, stylePtr);
+
+                if (moved)
+                {
+                    _lastForcedMaximizedCount++;
+                    _totalForcedMaximizedCount++;
+                }
+
+                return true;
+            }, IntPtr.Zero);
+        }
+
+        public int LastForcedMaximizedCount
+        {
+            get { return _lastForcedMaximizedCount; }
+        }
+
+        public int TotalForcedMaximizedCount
+        {
+            get { return _totalForcedMaximizedCount; }
         }
 
         private static void ForceTaskbarOnScreen(IntPtr h)
