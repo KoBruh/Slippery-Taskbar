@@ -28,11 +28,6 @@ namespace SlipperyTaskbar
                         NativeMethods.MSLLHOOKSTRUCT mouse = (NativeMethods.MSLLHOOKSTRUCT)Marshal.PtrToStructure(
                             lParam, typeof(NativeMethods.MSLLHOOKSTRUCT));
 
-                        // Do not touch ABM_SETSTATE here. Changing ABS_AUTOHIDE causes
-                        // Explorer to recalculate the desktop work area, which makes
-                        // maximized windows resize when Win or a tray flyout is used.
-                        // Instead, pre-authorize the notification-area transition and
-                        // keep the actual taskbar window physically on-screen.
                         if (_taskbars.IsPointOverNotificationArea(mouse.pt))
                         {
                             TimeSpan grace = message == NativeMethods.WM_LBUTTONDOWN
@@ -79,21 +74,18 @@ namespace SlipperyTaskbar
 
             bool shouldShow = _winDown || shellUi || interacting || trayVisibilityGuard || now < _visibleUntilUtc;
 
+            // On top/left/right layouts some Explorer variants keep a real work-area
+            // reservation even though Slippery hides the taskbar. Standard maximized
+            // windows then refuse a normal SetWindowPos and snap back to rcWork.
+            // While hidden, force every visible maximized window to the full monitor
+            // by temporarily clearing WS_MAXIMIZE during the move, then restoring it.
+            if (!shouldShow)
+                _taskbars.ForceAllMaximizedWindowsIntoTopAndSideGaps();
+
             bool anyTaskbarVisible;
             bool allTaskbarsVisible;
             _taskbars.GetActualVisibilityState(out anyTaskbarVisible, out allTaskbarsVisible);
 
-            // Native auto-hide is enabled only so Windows releases the taskbar's work
-            // area. Explorer may still try to reveal the bar when the pointer touches
-            // an edge, so immediately correct any visibility that Slippery did not
-            // authorize. Conversely, if Explorer auto-hides while Start/shell UI is
-            // active, put the taskbar back on-screen.
-            // Only correct the dangerous direction here: Explorer revealing a
-            // taskbar that Slippery intends to keep hidden. When the taskbar is
-            // intentionally visible, Explorer is allowed to own the intermediate
-            // frames of Start/tray/XAML animations. Re-showing or repositioning the
-            // taskbar during those frames is what caused the visible close/reopen
-            // stutter around the hidden-icons flyout.
             bool unauthorizedReveal = !shouldShow && anyTaskbarVisible;
 
             if (shouldShow != _lastShouldShow || unauthorizedReveal || _lastApplyUtc == DateTime.MinValue)
