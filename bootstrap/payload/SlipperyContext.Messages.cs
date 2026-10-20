@@ -36,6 +36,7 @@ namespace SlipperyTaskbar
                 case NativeMethods.WM_DISPLAYCHANGE:
                 case NativeMethods.WM_SETTINGCHANGE:
                     _taskbars.RefreshTaskbars();
+                    RepairAppbarPolicyIfNeeded();
                     break;
                 case NativeMethods.WM_POWERBROADCAST:
                     int power = m.WParam.ToInt32();
@@ -44,6 +45,7 @@ namespace SlipperyTaskbar
                         _taskbars.RefreshTaskbars();
                         _taskbars.EnsureAppbarPolicy(_enabled);
                         _taskbars.EnsureWorkAreaPolicy(_enabled);
+                        _lastAppbarPolicyCheckUtc = DateTime.UtcNow;
                         _visibleUntilUtc = DateTime.UtcNow.AddMilliseconds(750);
                     }
                     break;
@@ -55,6 +57,7 @@ namespace SlipperyTaskbar
             _taskbars.RefreshTaskbars();
             _taskbars.EnsureAppbarPolicy(_enabled);
             _taskbars.EnsureWorkAreaPolicy(_enabled);
+            _lastAppbarPolicyCheckUtc = DateTime.UtcNow;
             _visibleUntilUtc = DateTime.UtcNow.AddMilliseconds(750);
 
             // NotifyIcon normally recreates itself after TaskbarCreated, but
@@ -64,6 +67,24 @@ namespace SlipperyTaskbar
                 _notifyIcon.Visible = false;
                 _notifyIcon.Visible = true;
             }
+        }
+
+        private void RepairAppbarPolicyIfNeeded()
+        {
+            if (!_enabled) return;
+
+            _lastAppbarPolicyCheckUtc = DateTime.UtcNow;
+            uint state = _taskbars.GetAppbarState();
+            if ((state & NativeMethods.ABS_AUTOHIDE) != 0) return;
+
+            _appbarPolicyRepairAttempts++;
+            _taskbars.RefreshTaskbars();
+            _taskbars.EnsureAppbarPolicy(true);
+            _lastAppbarPolicyRepairUtc = DateTime.UtcNow;
+
+            uint after = _taskbars.GetAppbarState();
+            if ((after & NativeMethods.ABS_AUTOHIDE) != 0)
+                _appbarPolicyRepairSuccesses++;
         }
 
         private void HandleRawInput(IntPtr rawInputHandle)
